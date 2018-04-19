@@ -28,7 +28,7 @@
 
 #include "pdf417_hash.h"
 
-//#define DEBUG_PDF417 2
+#define DEBUG_PDF417 2
 
 #ifdef DEBUG_PDF417
 # define DEBUG_LEVEL (DEBUG_PDF417)
@@ -176,6 +176,18 @@ static inline signed char pdf417_decode_start(zbar_decoder_t *dcode)
     return(ZBAR_PARTIAL);
 }
 
+/* resolve scan direction and convert to ASCII */
+static inline unsigned char postprocess (zbar_decoder_t *dcode, const signed short c)
+{
+    pdf417_decoder_t *dcode417 = &dcode->pdf417;
+
+    printf("%c\n", dcode->buf[dcode417->character++] = c);
+
+    
+
+    return(0);
+}
+
 zbar_symbol_type_t _zbar_decode_pdf417 (zbar_decoder_t *dcode)
 {
     pdf417_decoder_t *dcode417 = &dcode->pdf417;
@@ -221,8 +233,9 @@ zbar_symbol_type_t _zbar_decode_pdf417 (zbar_decoder_t *dcode)
         return(0);
     }
 
-
     /* FIXME TBD infer dimensions, save codewords */
+
+    postprocess(dcode, c);
 
     if(c == PDF417_STOP) {
         dprintf(1, " [valid stop]");
@@ -231,8 +244,6 @@ zbar_symbol_type_t _zbar_decode_pdf417 (zbar_decoder_t *dcode)
         dcode417->character = -1;
     }
 
-    dcode->buf[dcode417->character++] = c;
-
     dprintf(2, "\n");
-    return(c);
+    return(0);
 }
