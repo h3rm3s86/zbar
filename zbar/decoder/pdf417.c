@@ -62,11 +62,16 @@ static inline signed short pdf417_decode8 (zbar_decoder_t *dcode)
             return(-1);
         sig = (sig << 3) ^ e;
     }
-    dprintf(2, " sig=%06lx", sig);
 
+    if (sig == 0x040486)
+        sig = 0x080007;
+
+    dprintf(2, " sig=%06lx", sig);
     /* determine cluster number */
-    int clst = ((sig & 7) - ((sig >> 3) & 7) +
+    int clst =  ((sig & 7) - ((sig >> 3) & 7) +
                 ((sig >> 12) & 7) - ((sig >> 15) & 7));
+    //080007 = 524295
+    //040486 = 263302
     if(clst < 0)
         clst += 9;
     dprintf(2, " k=%d", clst);
@@ -75,7 +80,7 @@ static inline signed short pdf417_decode8 (zbar_decoder_t *dcode)
             _zbar_decoder_buf_dump(dcode->buf, dcode->pdf417.character));
 
     if(clst != 0 && clst != 3 && clst != 6) {
-        if(get_color(dcode) && clst == 7 && sig == 0x080007)
+        if(clst == 7 && sig == 0x080007)
             return(PDF417_STOP);
         return(-1);
     }
@@ -91,10 +96,15 @@ static inline signed short pdf417_decode8 (zbar_decoder_t *dcode)
             _zbar_decoder_buf_dump(dcode->buf, dcode->pdf417.character));
 
     unsigned short c = (g[0] + g[1] + g[2]) & PDF417_HASH_MASK;
-    dprintf(2, " g0=%x g1=%x g2=%x c=%03d(%d)",
-            g[0], g[1], g[2], c & 0x3ff, c >> 10);
+    int i2 = (c & 0x3FF) % 30;
+    unsigned short c2 = text_mode_hash[i2];
+    int i1 = ((c & 0x3FF) - c2) / 30;
+    unsigned short c1 = text_mode_hash[i1];
 
+    dprintf(2, " g0=%x g1=%x g2=%x c=%03d(%d) c1=%c c2=%c",
+            g[0], g[1], g[2], c & 0x3ff, c >> 10, c1, c2);
     //if ((c >> 10) == 0)
+
     return(c);
 
     return -1;
@@ -179,11 +189,13 @@ static inline signed char pdf417_decode_start(zbar_decoder_t *dcode)
 /* resolve scan direction and convert to ASCII */
 static inline unsigned char postprocess (zbar_decoder_t *dcode, const signed short c)
 {
-    pdf417_decoder_t *dcode417 = &dcode->pdf417;
+    //pdf417_decoder_t *dcode417 = &dcode->pdf417;
 
-    printf("%c\n", dcode->buf[dcode417->character++] = c);
+    unsigned char c1, c2;
+    c2 = text_mode_hash[(c & 0x3ff) % 30];
+    c1 = text_mode_hash[((c & 0x3ff) - c2) / 30];
 
-    
+    printf("postprocess: %03d: %c %c\n", c & 0x3ff, c1, c2);
 
     return(0);
 }
@@ -197,9 +209,8 @@ zbar_symbol_type_t _zbar_decode_pdf417 (zbar_decoder_t *dcode)
     dcode417->s8 += get_width(dcode, 0);
 
     if(dcode417->character < 0) {
-        pdf417_decode_start(dcode);
         dprintf(4, "\n");
-        return(0);
+        return pdf417_decode_start(dcode);
     }
 
     /* process every 8th element of active symbol */
@@ -221,9 +232,9 @@ zbar_symbol_type_t _zbar_decode_pdf417 (zbar_decoder_t *dcode)
                 get_color(dcode), dcode417->direction, c,
                 _zbar_decoder_buf_dump(dcode->buf, c));
     }
-
 */
     signed short c = pdf417_decode8(dcode);
+
     if((c < 0) ||
        ((dcode417->character >= BUFFER_MIN) &&
         size_buf(dcode, dcode417->character + 1))) {
@@ -235,14 +246,17 @@ zbar_symbol_type_t _zbar_decode_pdf417 (zbar_decoder_t *dcode)
 
     /* FIXME TBD infer dimensions, save codewords */
 
-    postprocess(dcode, c);
-
     if(c == PDF417_STOP) {
+        //printf("PDF417: %d\n", c);
         dprintf(1, " [valid stop]");
         /* FIXME check trailing bar and qz */
         dcode->lock = 0;
         dcode417->character = -1;
+        dprintf(2, "\n");
+        return (0);
     }
+
+    postprocess(dcode, c);
 
     dprintf(2, "\n");
     return(0);
